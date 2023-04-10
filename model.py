@@ -6,13 +6,16 @@ from encoding import CentralityEncoding, EdgeEncoding, SpatialEncoding, SpecialE
 
 
 class Graphormer(nn.Module):
-    def __init__(self, dim, head_num, layer_num, num_class=10):
+    def __init__(
+        self, dim, head_num, layer_num, num_class=10, num_patch=8, patch_size=4
+    ):
         super().__init__()
-        self.fc_in = nn.Linear(3, dim)
-        self.centrality_encoding = CentralityEncoding(head_num, 8, 4, 3, dim)
-        self.spatial_encoding = SpatialEncoding(head_num, 8)
+        self.centrality_encoding = CentralityEncoding(
+            head_num, num_patch, patch_size, 3, dim
+        )
+        self.spatial_encoding = SpatialEncoding(head_num, num_patch)
         self.special_encoding = SpecialEncoding(dim)
-        self.edge_encoding = EdgeEncoding(head_num, 8)
+        self.edge_encoding = EdgeEncoding(head_num, num_patch)
         self.layers = nn.ModuleList(
             [GraphormerLayer(dim, head_num) for _ in range(layer_num)]
         )
