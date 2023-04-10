@@ -1,7 +1,8 @@
-import torch.nn as nn
-import torch
 import einops
-from encoding import CentralityEncoding, SpatialEncoding, SpecialEncoding, EdgeEncoding
+import torch
+import torch.nn as nn
+
+from encoding import CentralityEncoding, EdgeEncoding, SpatialEncoding, SpecialEncoding
 
 
 class Graphormer(nn.Module):
