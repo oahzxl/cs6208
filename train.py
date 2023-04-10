@@ -2,13 +2,13 @@ import torch.nn as nn
 import torch.optim as optim
 
 
-from model import Net
+from model import Graphormer
 from dataset import get_data
 
 
 def main():
     train_loader, test_loader = get_data()
-    model = Net()
+    model = Graphormer(64, 4, 2).cuda()
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -19,6 +19,8 @@ def main():
         for i, data in enumerate(train_loader, 0):
             # get the inputs; data is a list of [inputs, labels]
             inputs, labels = data
+            inputs = inputs.cuda()
+            labels = labels.cuda()
 
             optimizer.zero_grad()
 
