@@ -1,12 +1,17 @@
 import torch.nn as nn
 import torch
 import einops
+from encoding import CentralityEncoding, SpatialEncoding, SpecialEncoding, EdgeEncoding
 
 
 class Graphormer(nn.Module):
     def __init__(self, dim, head_num, layer_num, num_class=10):
         super().__init__()
         self.fc_in = nn.Linear(3, dim)
+        self.centrality_encoding = CentralityEncoding(head_num, 8, 4, 3, dim)
+        self.spatial_encoding = SpatialEncoding(head_num, 8)
+        self.special_encoding = SpecialEncoding(dim)
+        self.edge_encoding = EdgeEncoding(head_num, 8)
         self.layers = nn.ModuleList(
             [GraphormerLayer(dim, head_num) for _ in range(layer_num)]
         )
@@ -15,16 +20,18 @@ class Graphormer(nn.Module):
         self.fc_out2 = nn.Linear(dim, num_class)
 
     def forward(self, x):
-        x = self.pre_process(x)
+        x, bias = self.pre_process(x)
         for layer in self.layers:
-            x = layer(x)
+            x = layer(x, bias)
         x = self.post_process(x)
         return x
 
     def pre_process(self, x):
-        x = einops.rearrange(x, "b c h w -> b (h w) c")
-        x = self.fc_in(x)
-        return x
+        x = self.centrality_encoding(x)
+        x = self.special_encoding(x)
+        bias = self.spatial_encoding()
+        bias = bias + self.edge_encoding()
+        return x, bias
 
     def post_process(self, x):
         x = torch.mean(x, dim=1)
@@ -46,10 +53,10 @@ class GraphormerLayer(nn.Module):
         self.ln1 = nn.LayerNorm(dim)
         self.ln2 = nn.LayerNorm(dim)
 
-    def forward(self, x):
+    def forward(self, x, bias):
         residual = x
         x = self.ln1(x)
-        x = self.attn(x)
+        x = self.attn(x, bias)
         x = self.dropout(x)
         x = residual + x
 
@@ -73,14 +80,14 @@ class Attention(nn.Module):
         self.v = nn.Linear(dim, dim)
         self.o = nn.Linear(dim, dim)
 
-    def forward(self, x):
+    def forward(self, x, bias):
         q = self.q(x)
         k = self.k(x)
         v = self.v(x)
-        q = einops.rearrange(q, "b s (h hd) -> b h s hd", h=self.head_dim)
-        k = einops.rearrange(k, "b s (h hd) -> b h s hd", h=self.head_dim)
-        v = einops.rearrange(v, "b s (h hd) -> b h s hd", h=self.head_dim)
-        x = torch.matmul(q * self.scaling, k.transpose(-1, -2))
+        q = einops.rearrange(q, "b s (h hd) -> b h s hd", h=self.num_heads)
+        k = einops.rearrange(k, "b s (h hd) -> b h s hd", h=self.num_heads)
+        v = einops.rearrange(v, "b s (h hd) -> b h s hd", h=self.num_heads)
+        x = torch.matmul(q * self.scaling, k.transpose(-1, -2)) + bias
         x = torch.softmax(x, dim=-1)
         x = torch.matmul(x, v)
         x = einops.rearrange(x, "b h s hd  -> b s (h hd)")
