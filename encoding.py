@@ -14,7 +14,7 @@ class CentralityEncoding(nn.Module):
     def __init__(self, hidden_dim):
         super(CentralityEncoding, self).__init__()
         self.feature_encoder = nn.Linear(7, hidden_dim)
-        self.degree_encoder = nn.Embedding(10, hidden_dim)
+        self.degree_encoder = nn.Embedding(15, hidden_dim)
 
     def forward(self, x, edge_idx):
         # encode nodes

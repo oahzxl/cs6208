@@ -1,13 +1,26 @@
+import random
+import os
+import numpy as np
 import torch
 from torch_geometric.datasets import TUDataset
 from torch_geometric.loader import DataLoader
 from model import Graphormer
 
 
+def seed_everything(seed: int):    
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+
+
 if __name__ == "__main__":
+    seed_everything(42)
     dataset = TUDataset(root="./data/TUDataset", name="MUTAG", use_edge_attr=True)
     model = Graphormer(dim=64, head_num=4, layer_num=2).cuda()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = torch.nn.CrossEntropyLoss()
 
     dataset = dataset.shuffle()
