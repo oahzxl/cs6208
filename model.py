@@ -1,21 +1,17 @@
 import einops
 import torch
 import torch.nn as nn
+from torch_geometric.nn import global_mean_pool
 
-from encoding import CentralityEncoding, EdgeEncoding, SpatialEncoding, SpecialEncoding
+from encoding import CentralityEncoding, EdgeEncoding, SpatialEncoding
 
 
 class Graphormer(nn.Module):
-    def __init__(
-        self, dim, head_num, layer_num, num_class=10, num_patch=8, patch_size=4
-    ):
+    def __init__(self, dim, head_num, layer_num, num_class=10):
         super().__init__()
-        self.centrality_encoding = CentralityEncoding(
-            head_num, num_patch, patch_size, 3, dim
-        )
-        self.spatial_encoding = SpatialEncoding(head_num, num_patch)
-        self.special_encoding = SpecialEncoding(dim)
-        self.edge_encoding = EdgeEncoding(head_num, num_patch)
+        self.centrality_encoding = CentralityEncoding(dim)
+        self.spatial_encoding = SpatialEncoding(dim, head_num)
+        self.edge_encoding = EdgeEncoding(dim, head_num)
         self.layers = nn.ModuleList(
             [GraphormerLayer(dim, head_num) for _ in range(layer_num)]
         )
@@ -23,22 +19,21 @@ class Graphormer(nn.Module):
         self.ln = nn.LayerNorm(dim)
         self.fc_out2 = nn.Linear(dim, num_class)
 
-    def forward(self, x):
-        x, bias = self.pre_process(x)
+    def forward(self, x, edge_index, edge_attr, batch):
+        x, bias = self.pre_process(x, edge_index, edge_attr)
         for layer in self.layers:
             x = layer(x, bias)
-        x = self.post_process(x)
+        x = self.post_process(x, batch)
         return x
 
-    def pre_process(self, x):
-        x = self.centrality_encoding(x)
-        x = self.special_encoding(x)
-        bias = self.spatial_encoding()
-        bias = bias + self.edge_encoding()
+    def pre_process(self, x, edge_idx, edge_attr):
+        x = self.centrality_encoding(x, edge_idx)
+        bias = self.spatial_encoding(x, edge_idx)
+        bias = bias + self.edge_encoding(x, edge_idx, edge_attr)
         return x, bias
 
-    def post_process(self, x):
-        x = torch.mean(x, dim=1)
+    def post_process(self, x, batch):
+        x = global_mean_pool(x, batch)
         x = self.fc_out1(x)
         x = torch.nn.functional.relu(x)
         x = self.ln(x)
@@ -88,12 +83,12 @@ class Attention(nn.Module):
         q = self.q(x)
         k = self.k(x)
         v = self.v(x)
-        q = einops.rearrange(q, "b s (h hd) -> b h s hd", h=self.num_heads)
-        k = einops.rearrange(k, "b s (h hd) -> b h s hd", h=self.num_heads)
-        v = einops.rearrange(v, "b s (h hd) -> b h s hd", h=self.num_heads)
+        q = einops.rearrange(q, "s (h hd) -> h s hd", h=self.num_heads)
+        k = einops.rearrange(k, "s (h hd) -> h s hd", h=self.num_heads)
+        v = einops.rearrange(v, "s (h hd) -> h s hd", h=self.num_heads)
         x = torch.matmul(q * self.scaling, k.transpose(-1, -2)) + bias
         x = torch.softmax(x, dim=-1)
         x = torch.matmul(x, v)
-        x = einops.rearrange(x, "b h s hd  -> b s (h hd)")
+        x = einops.rearrange(x, "h s hd  -> s (h hd)")
         x = self.o(x)
         return x
