@@ -1,6 +1,7 @@
 import einops
 import torch
 import torch.nn as nn
+from torch_geometric.nn import GCNConv 
 from torch_geometric.nn import global_mean_pool
 
 from encoding import CentralityEncoding, EdgeEncoding, SpatialEncoding
@@ -15,7 +16,7 @@ class Graphormer(nn.Module):
         self.spatial_encoding = SpatialEncoding(dim, head_num)
         self.edge_encoding = EdgeEncoding(head_num)  # here I implement one improvement
 
-        # regular transformer
+        # graphormer layers
         self.layers = nn.ModuleList(
             [GraphormerLayer(dim, head_num) for _ in range(layer_num)]
         )
@@ -26,7 +27,7 @@ class Graphormer(nn.Module):
     def forward(self, x, edge_index, edge_attr, batch):
         x, bias = self.pre_process(x, edge_index, edge_attr)
         for layer in self.layers:
-            x = layer(x, bias)
+            x = layer(x, bias, edge_index)
         x = self.post_process(x, batch)
         return x
 
@@ -55,8 +56,10 @@ class GraphormerLayer(nn.Module):
         self.fc2 = nn.Linear(4 * dim, dim)
         self.ln1 = nn.LayerNorm(dim)
         self.ln2 = nn.LayerNorm(dim)
+        self.ln3 = nn.LayerNorm(dim)
+        self.gcn = GCN(dim)
 
-    def forward(self, x, bias):
+    def forward(self, x, bias, edge):
         residual = x
         x = self.ln1(x)
         x = self.attn(x, bias)
@@ -69,6 +72,12 @@ class GraphormerLayer(nn.Module):
         x = self.fc2(x)
         x = self.dropout(x)
         x = residual + x
+
+        residual = x
+        x = self.ln3(x)
+        x = self.gcn(x, edge)
+        x = residual + x
+
         return x
 
 
@@ -96,3 +105,23 @@ class Attention(nn.Module):
         x = einops.rearrange(x, "h s hd  -> s (h hd)")
         x = self.o(x)
         return x
+
+
+class GCN(torch.nn.Module): 
+    def __init__( 
+        self, 
+        hidden_dim: int = 16, 
+        dropout_rate: float = 0.5, 
+    ) -> None: 
+        super().__init__() 
+        self.dropout1 = torch.nn.Dropout(dropout_rate) 
+        self.conv1 = GCNConv(hidden_dim, hidden_dim) 
+        self.relu = torch.nn.ReLU() 
+        self.dropout2 = torch.nn.Dropout(dropout_rate) 
+
+    def forward(self, x, edge_index) -> torch.Tensor: 
+        x = self.dropout1(x) 
+        x = self.conv1(x, edge_index) 
+        x = self.relu(x) 
+        x = self.dropout2(x) 
+        return x 
