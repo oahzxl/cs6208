@@ -9,9 +9,13 @@ from encoding import CentralityEncoding, EdgeEncoding, SpatialEncoding
 class Graphormer(nn.Module):
     def __init__(self, dim, head_num, layer_num, num_class=10):
         super().__init__()
+
+        # here are the three key encoding in the paper
         self.centrality_encoding = CentralityEncoding(dim)
         self.spatial_encoding = SpatialEncoding(dim, head_num)
-        self.edge_encoding = EdgeEncoding(dim, head_num)
+        self.edge_encoding = EdgeEncoding(head_num)  # here I implement one improvement
+
+        # regular transformer
         self.layers = nn.ModuleList(
             [GraphormerLayer(dim, head_num) for _ in range(layer_num)]
         )
@@ -33,7 +37,7 @@ class Graphormer(nn.Module):
         return x, bias
 
     def post_process(self, x, batch):
-        x = global_mean_pool(x, batch)
+        x = global_mean_pool(x[:-1], batch)
         x = self.fc_out1(x)
         x = torch.nn.functional.relu(x)
         x = self.ln(x)
